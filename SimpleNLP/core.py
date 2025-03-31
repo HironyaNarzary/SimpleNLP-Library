@@ -1,21 +1,17 @@
 import re
 import string
 from collections import Counter
+from typing import List, Dict, Union, Set, Optional
 import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.corpus import stopwords
 from nltk.probability import FreqDist
-import matplotlib.pyplot as plt
 
-# Download required NLTK data with error handling
-try:
-    nltk.data.find("tokenizers/punkt")
-    nltk.data.find("corpora/stopwords")
-    nltk.data.find("corpora/wordnet")
-except LookupError:
+
+def _download_nltk_data():
+    """Download required NLTK data with robust error handling."""
     import ssl
-
     try:
         _create_unverified_https_context = ssl._create_unverified_context
     except AttributeError:
@@ -23,75 +19,206 @@ except LookupError:
     else:
         ssl._create_default_https_context = _create_unverified_https_context
 
-    nltk.download("punkt")
-    nltk.download("stopwords")
-    nltk.download("wordnet")
-    nltk.download("punkt_tab")  # Additional resource needed for tokenization
+    resources = [
+        ("tokenizers/punkt", "punkt"),
+        ("corpora/stopwords", "stopwords"),
+        ("corpora/wordnet", "wordnet"),
+        ("tokenizers/punkt_tab", "punkt_tab")
+    ]
+    
+    for path, name in resources:
+        try:
+            nltk.data.find(path)
+        except LookupError:
+            try:
+                nltk.download(name)
+            except Exception as e:
+                raise RuntimeError(f"Failed to download NLTK resource {name}: {str(e)}")
+
+
+# Ensure NLTK data is available at module level
+_download_nltk_data()
 
 
 class SimpleNLP:
-    def __init__(self):
-        self.stop_words = set(stopwords.words("english"))
+    """A simple NLP processor for basic text analysis tasks.
+    
+    Features:
+    - Text cleaning (URLs, mentions, punctuation, etc.)
+    - Word and sentence tokenization
+    - Stopword removal
+    - Stemming and lemmatization
+    - Word frequency analysis
+    - Basic text statistics
+    
+    Args:
+        language: Language for stopwords (default: 'english')
+        remove_numbers: Whether to remove numbers during cleaning (default: True)
+        remove_punct: Whether to remove punctuation during cleaning (default: True)
+    """
+    
+    def __init__(self, language: str = 'english', remove_numbers: bool = True, remove_punct: bool = True):
+        try:
+            self.stop_words = set(stopwords.words(language))
+        except LookupError:
+            raise ValueError(f"Unsupported language: {language}. Available languages: {stopwords.fileids()}")
+            
         self.stemmer = PorterStemmer()
         self.lemmatizer = WordNetLemmatizer()
+        self.remove_numbers = remove_numbers
+        self.remove_punct = remove_punct
+        self.language = language
 
-    def clean_text(self, text):
-        """Basic text cleaning"""
+    def clean_text(self, text: str) -> str:
+        """Clean text by removing unwanted elements.
+        
+        Args:
+            text: Input text to clean
+            
+        Returns:
+            Cleaned text with specified elements removed
+        """
         # Remove URLs
         text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
         # Remove user @ references and '#' from text
         text = re.sub(r"\@\w+|\#", "", text)
-        # Remove punctuation
-        text = text.translate(str.maketrans("", "", string.punctuation))
+        
+        if self.remove_punct:
+            # Remove punctuation
+            text = text.translate(str.maketrans("", "", string.punctuation))
+        
         # Convert to lowercase
         text = text.lower()
-        # Remove numbers
-        text = re.sub(r"\d+", "", text)
-        # Remove extra whitespace
-        text = " ".join(text.split())
+        
+        if self.remove_numbers:
+            # Remove numbers
+            text = re.sub(r"\d+", "", text)
+            
+        # Remove extra whitespace and trim
+        text = " ".join(text.split()).strip()
         return text
 
-    def tokenize_words(self, text):
-        """Word tokenization"""
+    def tokenize_words(self, text: str) -> List[str]:
+        """Tokenize text into words.
+        
+        Args:
+            text: Input text to tokenize
+            
+        Returns:
+            List of word tokens
+        """
         return word_tokenize(text)
 
-    def tokenize_sentences(self, text):
-        """Sentence tokenization"""
+    def tokenize_sentences(self, text: str) -> List[str]:
+        """Tokenize text into sentences.
+        
+        Args:
+            text: Input text to tokenize
+            
+        Returns:
+            List of sentence tokens
+        """
         return sent_tokenize(text)
 
-    def remove_stopwords(self, tokens):
-        """Remove stopwords from tokenized text"""
+    def remove_stopwords(self, tokens: List[str]) -> List[str]:
+        """Remove stopwords from tokenized text.
+        
+        Args:
+            tokens: List of word tokens
+            
+        Returns:
+            List of tokens with stopwords removed
+        """
         return [word for word in tokens if word not in self.stop_words]
 
-    def stem_words(self, tokens):
-        """Stem words using Porter Stemmer"""
+    def stem_words(self, tokens: List[str]) -> List[str]:
+        """Stem words using Porter Stemmer.
+        
+        Args:
+            tokens: List of word tokens
+            
+        Returns:
+            List of stemmed tokens
+        """
         return [self.stemmer.stem(word) for word in tokens]
 
-    def lemmatize_words(self, tokens):
-        """Lemmatize words using WordNet"""
+    def lemmatize_words(self, tokens: List[str]) -> List[str]:
+        """Lemmatize words using WordNet.
+        
+        Args:
+            tokens: List of word tokens
+            
+        Returns:
+            List of lemmatized tokens
+        """
         return [self.lemmatizer.lemmatize(word) for word in tokens]
 
-    def get_word_frequencies(self, tokens):
-        """Calculate word frequencies"""
+    @staticmethod
+    def get_word_frequencies(tokens: List[str]) -> Counter:
+        """Calculate word frequencies.
+        
+        Args:
+            tokens: List of word tokens
+            
+        Returns:
+            Counter object with word frequencies
+        """
         return Counter(tokens)
 
-    def plot_word_frequency(self, tokens, top_n=20):
-        """Plot word frequency distribution"""
+    def plot_word_frequency(self, tokens: List[str], top_n: int = 20) -> None:
+        """Plot word frequency distribution.
+        
+        Args:
+            tokens: List of word tokens
+            top_n: Number of top words to display
+            
+        Raises:
+            ImportError: If matplotlib is not installed
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError(
+                "matplotlib is required for plotting. "
+                "Install with: pip install matplotlib"
+            )
+        
         freq_dist = FreqDist(tokens)
         freq_dist.plot(top_n, title="Word Frequency Distribution")
         plt.show()
 
-    def get_most_common_words(self, tokens, n=10):
-        """Get most common words"""
+    @staticmethod
+    def get_most_common_words(tokens: List[str], n: int = 10) -> List[tuple]:
+        """Get most common words.
+        
+        Args:
+            tokens: List of word tokens
+            n: Number of top words to return
+            
+        Returns:
+            List of tuples (word, count) for most common words
+        """
         freq_dist = FreqDist(tokens)
         return freq_dist.most_common(n)
 
-    def get_word_stats(self, tokens):
-        """Get basic statistics about the text"""
+    @staticmethod
+    def get_word_stats(tokens: List[str]) -> Dict[str, Union[int, float]]:
+        """Get basic statistics about the text.
+        
+        Args:
+            tokens: List of word tokens
+            
+        Returns:
+            Dictionary containing:
+            - vocabulary_size: Number of unique words
+            - total_words: Total word count
+            - average_word_length: Average word length
+            - lexical_diversity: Type-token ratio
+        """
         vocab_size = len(set(tokens))
         total_words = len(tokens)
-        avg_word_length = sum(len(word) for word in tokens) / total_words
-        lexical_diversity = vocab_size / total_words
+        avg_word_length = sum(len(word) for word in tokens) / total_words if total_words > 0 else 0
+        lexical_diversity = vocab_size / total_words if total_words > 0 else 0
 
         return {
             "vocabulary_size": vocab_size,
@@ -100,8 +227,34 @@ class SimpleNLP:
             "lexical_diversity": lexical_diversity,
         }
 
-    def preprocess_text(self, text, steps=["clean", "tokenize", "remove_stopwords"]):
-        """Pipeline for text preprocessing"""
+    def preprocess_text(
+        self,
+        text: str,
+        steps: Optional[List[str]] = None,
+        **kwargs
+    ) -> Union[str, List[str]]:
+        """Pipeline for text preprocessing.
+        
+        Args:
+            text: Input text to process
+            steps: List of processing steps to apply. Default steps:
+                   ["clean", "tokenize", "remove_stopwords"]
+            **kwargs: Additional arguments for processing steps
+            
+        Returns:
+            Processed text (str if no tokenization, list of tokens otherwise)
+            
+        Raises:
+            ValueError: If invalid steps are provided
+        """
+        if steps is None:
+            steps = ["clean", "tokenize", "remove_stopwords"]
+            
+        valid_steps = {"clean", "tokenize", "remove_stopwords", "stem", "lemmatize"}
+        invalid_steps = set(steps) - valid_steps
+        if invalid_steps:
+            raise ValueError(f"Invalid steps: {invalid_steps}. Valid options: {valid_steps}")
+            
         processed = text
 
         if "clean" in steps:
@@ -109,23 +262,20 @@ class SimpleNLP:
 
         if "tokenize" in steps:
             processed = self.tokenize_words(processed)
-
-        if "remove_stopwords" in steps:
-            processed = self.remove_stopwords(processed)
-
-        if "stem" in steps:
-            processed = self.stem_words(processed)
-
-        if "lemmatize" in steps:
-            processed = self.lemmatize_words(processed)
-
+            if "remove_stopwords" in steps:
+                processed = self.remove_stopwords(processed)
+            if "stem" in steps:
+                processed = self.stem_words(processed)
+            if "lemmatize" in steps:
+                processed = self.lemmatize_words(processed)
+                
         return processed
 
 
-# Example usage with error handling
 if __name__ == "__main__":
+    # Example usage
     try:
-        nlp = SimpleNLP()
+        nlp = SimpleNLP(language='english')
 
         sample_text = """
         Natural language processing (NLP) is a subfield of linguistics, computer science, 
@@ -133,39 +283,29 @@ if __name__ == "__main__":
         It focuses on how to program computers to process and analyze large amounts of natural language data.
         """
 
-        # Clean and tokenize
-        cleaned_text = nlp.clean_text(sample_text)
-        tokens = nlp.tokenize_words(cleaned_text)
-        print("Tokens:", tokens)
+        # Demonstrate cleaning
+        cleaned = nlp.clean_text(sample_text)
+        print(f"Cleaned text:\n{cleaned}\n")
 
-        # Remove stopwords
-        filtered_tokens = nlp.remove_stopwords(tokens)
-        print("Filtered Tokens:", filtered_tokens)
-
-        # Lemmatize
-        lemmatized = nlp.lemmatize_words(filtered_tokens)
-        print("Lemmatized:", lemmatized)
+        # Full preprocessing pipeline
+        processed = nlp.preprocess_text(
+            sample_text,
+            steps=["clean", "tokenize", "remove_stopwords", "lemmatize"]
+        )
+        print(f"Processed tokens:\n{processed}\n")
 
         # Frequency analysis
-        freq = nlp.get_word_frequencies(lemmatized)
-        print("Frequencies:", freq)
+        freq = nlp.get_word_frequencies(processed)
+        print(f"Top 5 words:\n{freq.most_common(5)}\n")
 
-        # Plot word frequency (only if matplotlib is available)
-        try:
-            nlp.plot_word_frequency(lemmatized)
-        except Exception as e:
-            print(f"Could not plot frequencies: {e}")
+        # Statistics
+        stats = nlp.get_word_stats(processed)
+        print("Text statistics:")
+        for k, v in stats.items():
+            print(f"{k:>20}: {v:.2f}" if isinstance(v, float) else f"{k:>20}: {v}")
 
-        # Get statistics
-        stats = nlp.get_word_stats(lemmatized)
-        print("Statistics:", stats)
-
-        # Using the preprocessing pipeline
-        processed = nlp.preprocess_text(
-            sample_text, steps=["clean", "tokenize", "remove_stopwords", "lemmatize"]
-        )
-        print("Pipeline Output:", processed)
+        # Plotting (commented out by default)
+        # nlp.plot_word_frequency(processed)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        print("Please make sure all required NLTK data is downloaded.")
+        print(f"Error: {e}")
